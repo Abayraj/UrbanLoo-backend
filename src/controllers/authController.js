@@ -1,7 +1,7 @@
 const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
-
+const upsertDevice = require('../utils/upsertDevice');
 const {generateAccessToken, generateRefreshToken,} = require('../utils/token');
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -9,37 +9,19 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 // ── POST /api/auth/google ────────────────────────────────────────────
 const googleLogin = async (req, res) => {
   try {
-    const { idToken, expoPushToken, deviceName, deviceModel } = req.body;
+    const { idToken, expoPushToken, deviceId, notificationsEnabled, deviceName, deviceModel, platform } = req.body;
+    if (!idToken) return res.status(400).json({ message: 'idToken is required' });
+    console.log('Received idToken from client:', idToken);
 
-    if (!idToken) {return res.status(400).json({ message: 'idToken is required' });}
-
-    const ticket = await client.verifyIdToken({idToken, audience: process.env.GOOGLE_CLIENT_ID,});
+    const ticket = await client.verifyIdToken({ idToken, audience: process.env.GOOGLE_CLIENT_ID });
     const { sub, email, name, picture } = ticket.getPayload();
 
     let user = await User.findOne({ googleId: sub });
 
     if (user) {
       user.lastLoginAt = new Date();
-
-      if (expoPushToken) {
-        const existingDeviceIndex = user.devices.findIndex(
-          (device) => device.expoPushToken === expoPushToken
-        );
-
-        if (existingDeviceIndex > -1) {
-          user.devices[existingDeviceIndex].lastLoginAt = new Date();
-        } else {
-          user.devices.push({
-            expoPushToken,
-            deviceName,
-            deviceModel,
-            lastLoginAt: new Date(),
-          });
-        }
-      }
-
+      upsertDevice(user, { deviceId, expoPushToken, deviceName, deviceModel, platform, notificationsEnabled });
       await user.save();
-
     } else {
       user = await User.create({
         googleId: sub,
@@ -47,17 +29,11 @@ const googleLogin = async (req, res) => {
         name,
         photo: picture,
         lastLoginAt: new Date(),
-        devices: expoPushToken
-          ? [
-              {
-                expoPushToken,
-                deviceName,
-                deviceModel,
-                lastLoginAt: new Date(),
-              },
-            ]
-          : [],
+        devices: [],
       });
+      upsertDevice(user, { deviceId, expoPushToken, deviceName, deviceModel, platform, notificationsEnabled });
+      await user.save();
+      console.log('New user created:', user);
     }
 
     const accessToken = generateAccessToken(user._id);
@@ -67,56 +43,28 @@ const googleLogin = async (req, res) => {
       message: 'Login successful',
       accessToken,
       refreshToken,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        photo: user.photo,
-      },
+      user: { id: user._id, name: user.name, email: user.email, photo: user.photo },
     });
-
   } catch (error) {
     console.error('Google login error:', error.message);
-
+    console.log('Error details:', error);
     if (error.message?.includes('Invalid token')) {
       return res.status(401).json({ message: 'Invalid Google token' });
     }
-
     res.status(500).json({ message: 'Internal server error' });
   }
 };
 
-// ── Update Expo Push Token ───────────────────────────────────────────
 const updatePushToken = async (req, res) => {
   try {
-    const { expoPushToken, deviceName, deviceModel } = req.body;
-
+    const { expoPushToken, deviceId, deviceName, deviceModel, platform, notificationsEnabled } = req.body;
     const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
 
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    const existingIndex = user.devices.findIndex(
-      (device) => device.deviceModel === deviceModel
-    );
-
-    if (existingIndex > -1) {
-      user.devices[existingIndex].expoPushToken = expoPushToken;
-      user.devices[existingIndex].lastLoginAt = new Date();
-    } else {
-      user.devices.push({
-        expoPushToken,
-        deviceName,
-        deviceModel,
-        lastLoginAt: new Date(),
-      });
-    }
-
+    upsertDevice(user, { deviceId, expoPushToken, deviceName, deviceModel, platform, notificationsEnabled });
     await user.save();
 
     res.status(200).json({ message: 'Push token updated' });
-
   } catch (error) {
     console.error('updatePushToken error:', error.message);
     res.status(500).json({ message: 'Internal server error' });
@@ -161,8 +109,4 @@ const refreshToken = async (req, res) => {
   }
 };
 
-module.exports = {
-  googleLogin,
-  updatePushToken,
-  refreshToken,
-};
+module.exports = {googleLogin, updatePushToken, refreshToken,};

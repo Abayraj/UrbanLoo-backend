@@ -2,9 +2,12 @@ const mongoose = require('mongoose');
 
 const deviceSchema = new mongoose.Schema(
   {
-    expoPushToken: { type: String, required: true },
+    deviceId: { type: String, required: true },
+    expoPushToken: { type: String },
     deviceName: { type: String },
     deviceModel: { type: String },
+    platform: { type: String, enum: ['ios', 'android'] },
+    notificationsEnabled: { type: Boolean, default: true },
     lastLoginAt: { type: Date, default: Date.now },
   },
   { _id: false }
@@ -17,7 +20,7 @@ const userSchema = new mongoose.Schema(
     name: { type: String },
     photo: { type: String },
     devices: [deviceSchema],
-    lastLoginAt: { type: Date, default: Date.now },
+    lastActiveAt: { type: Date, default: Date.now },
   },
   { timestamps: true }
 );
