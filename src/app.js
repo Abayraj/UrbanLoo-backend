@@ -2,12 +2,12 @@ const express = require('express');
 require('dotenv').config();
 const cors = require('cors');
 const connectDB = require('./config/db');
-
+const formidableMiddleware = require('express-formidable');
 const authRoutes = require('./routes/auth');
 const verifyJWT = require('./middlewares/verifyJWT');
-const testController = require('./controllers/testController');
-const app = express();
+const { admin, adminRouter } = require('./admin/setup');
 
+const app = express();
 const PORT = process.env.PORT || 5000;
 
 connectDB().then(() => {
@@ -15,8 +15,17 @@ connectDB().then(() => {
     console.log(`🚀 Server running on port ${PORT}`);
   });
 });
+
 app.use(cors());
 app.use(express.json());
+
+// AdminJS panel
+app.use(admin.options.rootPath, (req, res, next) => {
+  if (req.method === 'POST') {
+    return formidableMiddleware()(req, res, next);
+  }
+  next();
+}, adminRouter);
 
 // Public routes
 app.use('/api/auth', authRoutes);
