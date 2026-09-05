@@ -1,5 +1,5 @@
 const { OAuth2Client } = require('google-auth-library');
-const User = require('../models/User');
+const User = require('../models/user');
 const jwt = require('jsonwebtoken');
 const upsertDevice = require('../utils/upsertDevice');
 const {generateAccessToken, generateRefreshToken,} = require('../utils/token');
@@ -51,6 +51,39 @@ const googleLogin = async (req, res) => {
     if (error.message?.includes('Invalid token')) {
       return res.status(401).json({ message: 'Invalid Google token' });
     }
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+
+// ── PATCH /api/auth/device-location ──────────────────────────────────
+// Fire-and-forget from the app whenever it has fresh reverse-geocoded
+// location data (resolved client-side via expo-location — see notes in
+// chat). Doesn't affect washroom search results; purely for tracking
+// where users are using the app from (analytics/admin visibility).
+const updateDeviceLocation = async (req, res) => {
+  try {
+    const { deviceId, latitude, longitude, district, state, country } = req.body;
+
+    if (!deviceId) {
+      return res.status(400).json({ message: 'deviceId is required' });
+    }
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+      return res.status(400).json({ message: 'latitude and longitude must be numbers' });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    upsertDevice(user, {
+      deviceId,
+      location: { latitude, longitude, district, state, country },
+    });
+    await user.save();
+
+    res.status(200).json({ message: 'Device location updated' });
+  } catch (error) {
+    console.error('updateDeviceLocation error:', error.message);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -109,4 +142,4 @@ const refreshToken = async (req, res) => {
   }
 };
 
-module.exports = {googleLogin, updatePushToken, refreshToken,};
+module.exports = {googleLogin, updatePushToken, refreshToken, updateDeviceLocation};
