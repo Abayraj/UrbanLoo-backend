@@ -3,10 +3,9 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-   "scripts": {
+  "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
-    "build": "node src/admin/build.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
