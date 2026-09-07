@@ -10,7 +10,7 @@ const {
 } = require('../controllers/locationController');
 const verifyJWT = require('../middlewares/verifyJWT');
 
-router.get('/map', getLocationsForMap);
+// router.get('/map', getLocationsForMap);
 router.get('/all-for-map', getAllLocationsForMap);
 
 // NOTE: must stay above the '/:id' route below, or '/:id' would swallow
