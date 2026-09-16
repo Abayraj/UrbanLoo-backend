@@ -508,6 +508,27 @@ const admin = new AdminJS({
       options: {
         properties: {
 
+          // FIX: new category field so each location can be tagged as
+          // an EV charging point or a Washroom when it's created/edited
+          // in the admin panel. Rendered as a dropdown ('select' type)
+          // instead of a free-text field so only valid values can be
+          // chosen — matches the enum on the Mongoose schema.
+          category: {
+            type: 'select',
+
+            availableValues: [
+              { value: 'EV', label: 'EV Charging' },
+              { value: 'Washroom', label: 'Washroom' },
+            ],
+
+            isVisible: {
+              list: true,
+              filter: true,
+              show: true,
+              edit: true,
+            },
+          },
+
           state: {
             isVisible: {
               list: true,
@@ -621,6 +642,7 @@ const admin = new AdminJS({
 
         listProperties: [
           'name',
+          'category',
           'city',
           'district',
           'state',
@@ -629,6 +651,7 @@ const admin = new AdminJS({
 
         editProperties: [
           'name',
+          'category',
           'state',
           'district',
           'city',
@@ -641,6 +664,7 @@ const admin = new AdminJS({
 
         showProperties: [
           'name',
+          'category',
           'state',
           'district',
           'city',
@@ -825,7 +849,7 @@ const admin = new AdminJS({
   // ─────────────────────────────────────────────────────────────────────────
 
   branding: {
-    companyName: 'Your App Admin',
+    companyName: 'urbancarft',
   },
 });
 

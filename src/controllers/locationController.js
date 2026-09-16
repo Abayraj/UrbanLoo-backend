@@ -8,6 +8,13 @@ const DEFAULT_RADIUS_KM = 10;
 const MAX_RADIUS_KM = 100;
 
 // ── Shared helpers ───────────────────────────────────────────────────
+// FIX: dropped all field include/exclude lists. Location has no
+// sensitive fields (no passwords/tokens/internal user data), so there's
+// no real reason to whitelist or blacklist anything — every field on
+// the schema (name, category, state, district, city, pincode,
+// latitude, longitude, isActive, timestamps, etc.) is just returned as
+// stored. Any field added to the model in future shows up automatically
+// everywhere below with zero changes needed in this file.
 
 // Parses/validates lat & lng from query params. Returns { lat, lng } or
 // null if either is missing/invalid — callers decide what "no coords"
@@ -24,9 +31,13 @@ function parseCoords(query) {
 // Runs the shared $geoNear aggregation used by the map endpoint(s).
 // - coords: { lat, lng } — required, caller must validate first.
 // - maxDistanceKm: optional cap.
-// - extraFields: extra field names to include in the $project on top
-//   of the ones every caller needs.
-async function geoNearLocations({ coords, maxDistanceKm, extraFields = [] }) {
+//
+// $geoNear always outputs distanceMeters as its own top-level field
+// alongside the full matched document. $replaceRoot + $mergeObjects
+// merges the original document ($$ROOT) with the computed distanceKm,
+// so every schema field comes through untouched — no per-field
+// $project list to maintain here.
+async function geoNearLocations({ coords, maxDistanceKm }) {
   const geoNearStage = {
     near: { type: 'Point', coordinates: [coords.lng, coords.lat] },
     distanceField: 'distanceMeters',
@@ -38,21 +49,20 @@ async function geoNearLocations({ coords, maxDistanceKm, extraFields = [] }) {
     geoNearStage.maxDistance = maxDistanceKm * 1000;
   }
 
-  const projectFields = {
-    name: 1,
-    city: 1,
-    state: 1,
-    district: 1,
-    latitude: 1,
-    longitude: 1,
-    distanceKm: { $round: [{ $divide: ['$distanceMeters', 1000] }, 2] },
-  };
-
-  for (const field of extraFields) {
-    projectFields[field] = 1;
-  }
-
-  return Location.aggregate([{ $geoNear: geoNearStage }, { $project: projectFields }]);
+  return Location.aggregate([
+    { $geoNear: geoNearStage },
+    {
+      $replaceRoot: {
+        newRoot: {
+          $mergeObjects: [
+            '$$ROOT',
+            { distanceKm: { $round: [{ $divide: ['$distanceMeters', 1000] }, 2] } },
+          ],
+        },
+      },
+    },
+    { $unset: 'distanceMeters' },
+  ]);
 }
 
 // ── GET /api/locations/map?lat=&lng=&radius= ──────────────────────────
@@ -140,9 +150,7 @@ const getAllLocationsForMap = async (req, res) => {
 
     if (!coords) {
       // No valid coords given — original behavior, unchanged.
-      const locations = await Location.find({ isActive: true })
-        .select('name city state district pincode latitude longitude')
-        .lean();
+      const locations = await Location.find({ isActive: true }).lean();
       return res.json(locations);
     }
 
@@ -150,7 +158,7 @@ const getAllLocationsForMap = async (req, res) => {
     // No maxDistanceKm cap: this endpoint intentionally returns ALL
     // active locations (map pins + client-side search + client-side
     // nearby-list derivation).
-    const locations = await geoNearLocations({ coords, extraFields: ['pincode'] });
+    const locations = await geoNearLocations({ coords });
 
     res.json(locations);
   } catch (error) {
@@ -167,9 +175,7 @@ const getLocationById = async (req, res) => {
       return res.status(400).json({ message: 'Invalid location id' });
     }
 
-    const location = await Location.findById(id)
-      .select('name city pincode latitude longitude')
-      .lean();
+    const location = await Location.findById(id).lean();
 
     if (!location) {
       return res.status(404).json({ message: 'Location not found' });
@@ -218,9 +224,7 @@ const getLikedLocations = async (req, res) => {
     const locations = await Location.find({
       _id: { $in: user.likedLocations },
       isActive: true,
-    })
-      .select('name city state district pincode latitude longitude')
-      .lean();
+    }).lean();
 
     res.json(locations);
   } catch (error) {

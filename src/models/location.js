@@ -1,5 +1,3 @@
-const mongoose = require('mongoose');
-
 const locationSchema = new mongoose.Schema(
   {
     name: {
@@ -8,6 +6,11 @@ const locationSchema = new mongoose.Schema(
       trim: true,
       minlength: 3,
       maxlength: 100,
+    },
+    category: {
+      type: String,
+      required: true,
+      enum: ['EV', 'Washroom'],
     },
     state: { type: String, required: true, trim: true },
     district: { type: String, required: true, trim: true },
@@ -24,28 +27,10 @@ const locationSchema = new mongoose.Schema(
         default: 'Point',
       },
       coordinates: {
-        type: [Number], // [longitude, latitude]
+        type: [Number],
         default: undefined,
       },
     },
   },
   { timestamps: true }
 );
-
-locationSchema.pre('save', function () {
-  if (this.isModified('latitude') || this.isModified('longitude') || !this.location?.coordinates) {
-    this.location = {
-      type: 'Point',
-      coordinates: [this.longitude, this.latitude],
-    };
-  }
-});
-
-// Powers $geoNear in getLocationsForMap (nearby-list distance queries).
-locationSchema.index({ location: '2dsphere' });
-
-// No search-related index here — search is currently client-side
-// (see PRODUCTION TODO in controllers/locationController.js for when
-// and how to bring back server-side search + its index).
-
-module.exports = mongoose.model('Location', locationSchema);
