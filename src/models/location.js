@@ -1,3 +1,5 @@
+const mongoose = require("mongoose");
+
 const locationSchema = new mongoose.Schema(
   {
     name: {
@@ -34,3 +36,5 @@ const locationSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+module.exports = mongoose.model("Location", locationSchema);
