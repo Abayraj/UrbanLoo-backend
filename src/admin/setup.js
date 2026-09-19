@@ -508,11 +508,14 @@ const admin = new AdminJS({
       options: {
         properties: {
 
-          // FIX: new category field so each location can be tagged as
-          // an EV charging point or a Washroom when it's created/edited
-          // in the admin panel. Rendered as a dropdown ('select' type)
-          // instead of a free-text field so only valid values can be
-          // chosen — matches the enum on the Mongoose schema.
+          state: {
+            isVisible: {
+              list: true,
+              filter: true,
+              show: true,
+              edit: true,
+            },
+          },
           category: {
             type: 'select',
 
@@ -521,15 +524,6 @@ const admin = new AdminJS({
               { value: 'Washroom', label: 'Washroom' },
             ],
 
-            isVisible: {
-              list: true,
-              filter: true,
-              show: true,
-              edit: true,
-            },
-          },
-
-          state: {
             isVisible: {
               list: true,
               filter: true,
@@ -642,7 +636,6 @@ const admin = new AdminJS({
 
         listProperties: [
           'name',
-          'category',
           'city',
           'district',
           'state',
@@ -651,9 +644,9 @@ const admin = new AdminJS({
 
         editProperties: [
           'name',
-          'category',
           'state',
           'district',
+          'category',
           'city',
           'pincode',
           'latitude',
@@ -664,9 +657,9 @@ const admin = new AdminJS({
 
         showProperties: [
           'name',
-          'category',
           'state',
           'district',
+          'category',
           'city',
           'pincode',
           'latitude',
@@ -901,7 +894,7 @@ const adminRouter =
       authenticate,
 
       cookiePassword:
-        process.env.ADMIN_COOKIE_SECRET 
+        process.env.ADMIN_COOKIE_SECRET
     },
     null,
     {

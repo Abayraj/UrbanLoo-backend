@@ -37,4 +37,11 @@ const locationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+locationSchema.pre("save", function () {
+  this.location = {
+    type: "Point",
+    coordinates: [this.longitude, this.latitude],
+  };
+});
+
 module.exports = mongoose.model("Location", locationSchema);
