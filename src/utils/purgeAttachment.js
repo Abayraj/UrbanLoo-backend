@@ -4,17 +4,18 @@ const s3 = require('../config/s3Client');
 const ActiveStorageBlob = require('../models/activeStorageBlob');
 const ActiveStorageAttachment = require('../models/activeStorageAttachment');
 
-async function purgeAttachment(attachment) {
+async function purgeAttachment(attachmentId) {
+  const attachment = await ActiveStorageAttachment.findByIdAndDelete(attachmentId);
   if (!attachment) return;
-  await s3.send(
-    new DeleteObjectCommand({
-      Bucket: process.env.R2_BUCKET,
-      Key: attachment.blobId.key,
-    })
-  );
 
-  await ActiveStorageBlob.findByIdAndDelete(attachment.blobId._id);
-  await ActiveStorageAttachment.findByIdAndDelete(attachment._id);
+  const blob = await ActiveStorageBlob.findByIdAndDelete(attachment.blobId);
+
+  if (blob) {
+    await s3.send(new DeleteObjectCommand({
+      Bucket: process.env.R2_BUCKET,
+      Key: blob.key,
+    }));
+  }
 }
 
 module.exports = purgeAttachment;
