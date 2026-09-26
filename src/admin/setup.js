@@ -1,7 +1,7 @@
 // admin/setup.js
 
 const AdminJS = require('adminjs');
-const { ComponentLoader } = require('adminjs');
+const { ComponentLoader, ValidationError } = require('adminjs');
 const AdminJSExpress = require('@adminjs/express');
 const {
   Database,
@@ -16,10 +16,13 @@ const AdminUser = require('../models/adminUser');
 const User = require('../models/user');
 const Location = require('../models/location');
 
+const STATES_DISTRICTS = require('../data/statesDistricts');
+
 const attachFile = require('../utils/attachFile');
 const getAttachmentsForRecord = require('../utils/getAttachments');
 const purgeAttachment = require('../utils/purgeAttachment');
 const purgeAllAttachmentsForRecord = require('../utils/purgeAllAttachmentsForRecord');
+const purgeReviewsForLocation = require('../utils/purgeReviewsForLocation');
 const { sendPushToUsers } = require('../utils/pushNotifications');
 
 
@@ -114,6 +117,20 @@ class SafeMongooseResource extends MongooseResource {
   async delete(id) {
     const modelName = this.MongooseModel?.modelName;
 
+    // Deleting a Location cascades. Order matters:
+    //   1. review images + reviews (reviews are needed to find their images)
+    //   2. the location's own images
+    //   3. dangling likes on users
+    //   4. the location itself
+    if (modelName === 'Location') {
+      await purgeReviewsForLocation(id);
+
+      await User.updateMany(
+        {},
+        { $pull: { likedLocations: id } }
+      );
+    }
+
     // Clean up all attached images before deleting the actual record.
     if (MODELS_WITH_ATTACHMENTS.includes(modelName)) {
       await purgeAllAttachmentsForRecord(modelName, id);
@@ -172,6 +189,11 @@ componentLoader.add(
   path.join(__dirname, 'components/SendNotificationForm')
 );
 
+componentLoader.add(
+  'DistrictSelect',
+  path.join(__dirname, 'components/DistrictSelect')
+);
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Access control
@@ -181,6 +203,44 @@ const superadminOnly = {
   isAccessible: ({ currentAdmin }) =>
     currentAdmin?.role === 'superadmin',
 };
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Delete warning shown in the confirmation popup
+// ─────────────────────────────────────────────────────────────────────────────
+
+const LOCATION_DELETE_WARNING =
+  'Warning: deleting this location will also permanently delete ALL reviews ' +
+  'users have written for it, along with every image attached to the ' +
+  'location and to those reviews. This cannot be undone. Continue?';
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// State / district validation (server side)
+// The UI only offers valid districts, this stops bad values from being saved.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function validateStateDistrict(request) {
+  if (request.method !== 'post') {
+    return;
+  }
+
+  const { state, district } = request.payload || {};
+
+  if (state && !STATES_DISTRICTS[state]) {
+    throw new ValidationError(
+      { state: { message: 'Select a valid state.' } },
+      { message: 'Invalid state.' }
+    );
+  }
+
+  if (state && district && !STATES_DISTRICTS[state].includes(district)) {
+    throw new ValidationError(
+      { district: { message: `"${district}" is not a district of ${state}.` } },
+      { message: 'Invalid district for the selected state.' }
+    );
+  }
+}
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -508,7 +568,17 @@ const admin = new AdminJS({
       options: {
         properties: {
 
+          // State: dropdown built from src/data/statesDistricts.js
           state: {
+            type: 'select',
+
+            availableValues: Object.keys(STATES_DISTRICTS).map(
+              (stateName) => ({
+                value: stateName,
+                label: stateName,
+              })
+            ),
+
             isVisible: {
               list: true,
               filter: true,
@@ -516,6 +586,7 @@ const admin = new AdminJS({
               edit: true,
             },
           },
+
           category: {
             type: 'select',
 
@@ -532,12 +603,22 @@ const admin = new AdminJS({
             },
           },
 
+          // District: dropdown filtered by the selected state.
+          // The component reads the map from property.custom.
           district: {
             isVisible: {
               list: true,
               filter: true,
               show: true,
               edit: true,
+            },
+
+            custom: {
+              statesDistricts: STATES_DISTRICTS,
+            },
+
+            components: {
+              edit: 'DistrictSelect',
             },
           },
 
@@ -683,6 +764,7 @@ const admin = new AdminJS({
           new: {
 
             before: async (request) => {
+              validateStateDistrict(request);
               return extractUploadedFiles(request);
             },
 
@@ -721,6 +803,7 @@ const admin = new AdminJS({
           edit: {
 
             before: async (request) => {
+              validateStateDistrict(request);
               return extractUploadedFiles(request);
             },
 
@@ -789,7 +872,23 @@ const admin = new AdminJS({
 
 
           // ────────────────────────────────────────────────────────────────
+          // DELETE (with warning popup)
+          // The guard makes AdminJS show a confirmation modal first.
+          // The actual cascade happens in SafeMongooseResource.delete.
+          // ────────────────────────────────────────────────────────────────
+
+          delete: {
+            guard: LOCATION_DELETE_WARNING,
+          },
+
+          bulkDelete: {
+            guard: LOCATION_DELETE_WARNING,
+          },
+
+
+          // ────────────────────────────────────────────────────────────────
           // DELETE IMAGE
+          // purgeAttachment takes an attachment ID.
           // ────────────────────────────────────────────────────────────────
 
           deleteImage: {
