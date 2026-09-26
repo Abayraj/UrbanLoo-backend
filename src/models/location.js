@@ -44,4 +44,6 @@ locationSchema.pre("save", function () {
   };
 });
 
+locationSchema.index({ location: "2dsphere" });
+
 module.exports = mongoose.model("Location", locationSchema);
