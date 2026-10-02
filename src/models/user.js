@@ -38,6 +38,8 @@ const userSchema = new mongoose.Schema(
      likedLocations: [
       { type: mongoose.Schema.Types.ObjectId, ref: 'Location', default: [] },
     ],
+     state: { type: String },
+    district: { type: String },
   },
  
   { timestamps: true }
