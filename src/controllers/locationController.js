@@ -3,6 +3,7 @@ const Location = require('../models/location');
 const Review = require('../models/review');
 const User = require('../models/user');
 const getAttachmentsForRecord = require('../utils/getAttachments');
+const markVerifiedReviews = require('../utils/markVerifiedReviews');
 
 const DEFAULT_RADIUS_KM = 10;
 const MAX_RADIUS_KM = 100;
@@ -188,8 +189,10 @@ const getLocationById = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
+    const reviewsWithVerified = await markVerifiedReviews(location._id, reviews);
+
     const reviewsWithImages = await Promise.all(
-      reviews.map(async (r) => ({
+      reviewsWithVerified.map(async (r) => ({
         ...r,
         images: await getAttachmentsForRecord('Review', r._id),
       }))
