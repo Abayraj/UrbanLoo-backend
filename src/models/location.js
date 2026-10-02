@@ -44,6 +44,7 @@ locationSchema.pre("save", function () {
   };
 });
 
+// Powers $geoNear in getLocationsForMap (nearby-list distance queries).
 locationSchema.index({ location: "2dsphere" });
 
 module.exports = mongoose.model("Location", locationSchema);

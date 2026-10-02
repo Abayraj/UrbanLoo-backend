@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const fs = require('fs');
 const Review = require('../models/review');
 const Location = require('../models/location');
+const markVerifiedReviews = require('../utils/markVerifiedReviews');
 const ActiveStorageAttachment = require('../models/activeStorageAttachment');
 const attachFile = require('../utils/attachFile');
 const getAttachmentsForRecord = require('../utils/getAttachments');
@@ -13,7 +14,7 @@ const MAX_REVIEW_IMAGES = 3;
 
 const cleanupTempFiles = (files = []) => {
   for (const file of files) {
-    fs.unlink(file.path, () => {});
+    fs.unlink(file.path, () => { });
   }
 };
 
@@ -76,8 +77,10 @@ const createReview = async (req, res) => {
     }
 
     const images = await getAttachmentsForRecord('Review', review._id);
-
-    res.status(201).json({ ...review.toObject(), images });
+    res.status(201).json({
+      ...review.toObject(),
+      images,
+    });
   } catch (error) {
     cleanupTempFiles(req.files);
     if (error.code === 11000) {
@@ -168,7 +171,8 @@ const updateReview = async (req, res) => {
     }
 
     const images = await getAttachmentsForRecord('Review', review._id);
-    res.json({ ...review.toObject(), images });
+    const [reviewWithVerified] = await markVerifiedReviews(review.location, [review.toObject()]);
+    res.json({ ...reviewWithVerified, images });
   } catch (error) {
     cleanupTempFiles(req.files);
     console.error('updateReview error:', error);
@@ -177,6 +181,9 @@ const updateReview = async (req, res) => {
 };
 
 // ── GET /api/reviews/location/:locationId ─────────────────────────────────
+// Returns every review for the location. The logged-in user's own review
+// gets isMine: true so the app can show it on top without a second request.
+// The route is protected with verifyJWT, so req.user is always set.
 const getReviewsForLocation = async (req, res) => {
   try {
     const reviews = await Review.find({ location: req.params.locationId })
@@ -187,43 +194,28 @@ const getReviewsForLocation = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
+    const reviewsWithVerified = await markVerifiedReviews(req.params.locationId, reviews);
+
+    // The id of the user who is making this request (set by verifyJWT).
+    const loggedInUserId = req.user._id.toString();
+
     const reviewsWithImages = await Promise.all(
-      reviews.map(async (r) => ({
-        ...r,
-        images: await getAttachmentsForRecord('Review', r._id),
-      }))
+      reviewsWithVerified.map(async (review) => {
+        // The id of the user who wrote this review. It is undefined if that
+        // user's account was deleted, which safely counts as "not mine".
+        const reviewAuthorId = review.user?._id.toString();
+
+        return {
+          ...review,
+          isMine: reviewAuthorId === loggedInUserId,
+          images: await getAttachmentsForRecord('Review', review._id),
+        };
+      })
     );
 
     res.json(reviewsWithImages);
   } catch (error) {
     console.error('getReviewsForLocation error:', error);
-    res.status(500).json({ message: 'Internal server error' });
-  }
-};
-
-// ── GET /api/reviews/location/:locationId/mine ────────────────────────────
-// Lets the frontend check whether the logged-in user already has a review
-// for this location, so it can show "Edit review" instead of "Add review".
-const getMyReviewForLocation = async (req, res) => {
-  try {
-    const review = await Review.findOne({
-      location: req.params.locationId,
-      user: req.user._id,
-    })
-      // FIX: this query wasn't populated at all — review.user was a raw
-      // ObjectId, not { name, photo }, so any UI reading review.user.name
-      // here would break the same way.
-      .populate('user', 'name photo')
-      .lean();
-
-    if (!review) {
-      return res.json({ hasReviewed: false, review: null });
-    }
-
-    const images = await getAttachmentsForRecord('Review', review._id);
-    res.json({ hasReviewed: true, review: { ...review, images } });
-  } catch (error) {
-    console.error('getMyReviewForLocation error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -255,6 +247,5 @@ module.exports = {
   createReview,
   updateReview,
   getReviewsForLocation,
-  getMyReviewForLocation,
   deleteReview,
 };
