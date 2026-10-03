@@ -27,7 +27,7 @@ router.post('/', verifyJWT, upload.array('images', 3), createReview);
 // Edit rating/comment and add/remove images (max 3 total).
 router.put('/:id', verifyJWT, upload.array('images', 3), updateReview);
 
-router.get('/location/:locationId', getReviewsForLocation); // public, no auth needed to view reviews
+router.get('/location/:locationId', verifyJWT, getReviewsForLocation);
 
 router.delete('/:id', verifyJWT, deleteReview);
 
