@@ -47,10 +47,6 @@ app.use('/api/locations', locationRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/meta', metaRoutes);
 
-app.get('/api/test', verifyJWT, (req, res) => {
-  res.json({ message: 'token is valid', user: req.user });
-});
-
 app.use((err, req, res, next) => {
   if (err && err.name === 'MulterError') {
     return res.status(400).json({ message: err.message });
