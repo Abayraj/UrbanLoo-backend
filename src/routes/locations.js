@@ -18,6 +18,6 @@ router.get('/all-for-map', getAllLocationsForMap);
 router.get('/liked/me', verifyJWT, getLikedLocations);
 router.patch('/:id/like', verifyJWT, toggleLikeLocation);
 
-router.get('/:id', getLocationById);
+router.get('/:id',verifyJWT, getLocationById);
 
 module.exports = router;
